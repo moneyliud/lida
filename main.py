@@ -10,12 +10,12 @@ def serial_read(ser, a2):
         num = ser.inWaiting()
         if num > 0:
             msg = ser.read(num)
-            print(msg.decode("utf-8"))
+            print(msg)
     pass
 
 
 if __name__ == '__main__':
-    lida_file = "E:\download\\test (52).ild"
+    lida_file = "E:\\pyWorkSpace\\lida\\test.ild"
     file = open(lida_file, 'rb+')
     data = file.read()
     file.close()
