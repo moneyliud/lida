@@ -15,7 +15,7 @@ def serial_read(ser, a2):
 
 
 if __name__ == '__main__':
-    lida_file = "E:\\pyWorkSpace\\lida\\test.ild"
+    lida_file = "D:\\pyWorkspace\\lida\\test.ild"
     file = open(lida_file, 'rb+')
     data = file.read()
     file.close()

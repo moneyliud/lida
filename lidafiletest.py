@@ -6,7 +6,7 @@ if __name__ == '__main__':
     lidaFile = LidaFile()
     lidaFile.name = "test123"
     lidaFile.company = "company0"
-    image = cv2.imread("C:\\Users\\Administrator\\Pictures\\test2.jpg")
+    image = cv2.imread("C:\\Users\\Administrator\\Pictures\\test18.jpg")
     converter = ImageILDAConverter()
     converter.save_image = True
     points = converter.convert(image)

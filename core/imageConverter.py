@@ -9,7 +9,7 @@ from .utils import rgb_to_ilda_color, rgb_to_7_color
 class ImageILDAConverter:
     def __init__(self):
         self.scales = 0.0
-        self.laser_point_interval = 1000
+        self.laser_point_interval = 1200
         self.blank_point_interval = 500
         self.save_image = False
         self.skeleton = None
@@ -18,6 +18,9 @@ class ImageILDAConverter:
         self.org_points = []
         self.contour_use_flag = None
         self.contour_list = None
+        self.end_blank_repeat_num = 3
+        self.tiny_contour_repeat_num = 4
+        self.dis_threshold = 2000
         pass
 
     def convert(self, image):
@@ -38,22 +41,37 @@ class ImageILDAConverter:
         current_contour_index = 0
         while not self.__is_all_counter_used():
             current_contour = self.contour_list[current_contour_index]
-            for j in range(1, len(current_contour)):
-                if j == 1:
-                    self.points.append(self.__to_ilda_point(current_contour[j - 1], True))
-                points = self.__get_points_between(current_contour[j - 1], current_contour[j])
-                self.points += points
+            contour_repeat_num = 0
+            contour_len = len(current_contour)
+            if contour_len < 5:
+                contour_repeat_num = self.tiny_contour_repeat_num
+            else:
+                contour_repeat_num = 1
+            while contour_repeat_num > 0:
+                if contour_len == 1:
+                    self.points.append(self.__to_ilda_point(current_contour[0], True))
+                    pass
+                else:
+                    for j in range(1, len(current_contour)):
+                        if j == 1:
+                            self.points.append(self.__to_ilda_point(current_contour[j - 1], True))
+                        points = self.__get_points_between(current_contour[j - 1], current_contour[j])
+                        self.points += points
+                contour_repeat_num -= 1
             # for i in range(5):
             #     self.points.append(self.__to_ilda_point(current_contour[-1], True))
             next_idx = self.__find_nearest_contour(current_contour_index)
             if next_idx is not None:
-                self.points.append(self.__to_ilda_point(current_contour[-1], False))
+                for i in range(self.end_blank_repeat_num):
+                    self.points.append(self.__to_ilda_point(current_contour[-1], False))
                 blank_points = self.__get_points_between(current_contour[-1], self.contour_list[next_idx][0],
                                                          False)
                 self.points += blank_points
+                for i in range(self.end_blank_repeat_num):
+                    self.points.append(self.__to_ilda_point(self.contour_list[next_idx][0], False))
                 current_contour_index = next_idx
         # 增加运动点位返回起点
-        if current_contour_index != 0:
+        if self.__is_all_counter_used():
             blank_points = self.__get_points_between(self.contour_list[current_contour_index][-1],
                                                      self.contour_list[0][0],
                                                      False)
@@ -94,6 +112,9 @@ class ImageILDAConverter:
             middle_points_count = round(dis / self.laser_point_interval) - 1
         else:
             middle_points_count = round(dis / self.blank_point_interval) + 3
+        if dis > self.dis_threshold:
+            points.append(self.__to_ilda_point(point1, enable))
+            points.append(self.__to_ilda_point(point1, enable))
         if middle_points_count > 0:
             x_interval = (point2[0] - point1[0]) / (middle_points_count + 1)
             y_interval = (point2[1] - point1[1]) / (middle_points_count + 1)
@@ -101,6 +122,9 @@ class ImageILDAConverter:
                 x_middle = point1[0] + x_interval * i
                 y_middle = point1[1] + y_interval * i
                 points.append(self.__to_ilda_point([x_middle, y_middle], enable))
+        if dis > self.dis_threshold:
+            points.append(self.__to_ilda_point(point2, enable))
+            points.append(self.__to_ilda_point(point2, enable))
         points.append(self.__to_ilda_point(point2, enable))
         return points
 
