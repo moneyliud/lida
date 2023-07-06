@@ -4,6 +4,7 @@ import os
 import cv2
 import math
 from .utils import rgb_to_ilda_color, rgb_to_7_color
+from .LIDA import COLOR
 
 
 class ImageILDAConverter:
@@ -55,7 +56,7 @@ class ImageILDAConverter:
                     for j in range(1, len(current_contour)):
                         if j == 1:
                             self.points.append(self.__to_ilda_point(current_contour[j - 1], True))
-                        points = self.__get_points_between(current_contour[j - 1], current_contour[j])
+                        points = self.get_points_between(current_contour[j - 1], current_contour[j])
                         self.points += points
                 contour_repeat_num -= 1
             # for i in range(5):
@@ -64,17 +65,17 @@ class ImageILDAConverter:
             if next_idx is not None:
                 for i in range(self.end_blank_repeat_num):
                     self.points.append(self.__to_ilda_point(current_contour[-1], False))
-                blank_points = self.__get_points_between(current_contour[-1], self.contour_list[next_idx][0],
-                                                         False)
+                blank_points = self.get_points_between(current_contour[-1], self.contour_list[next_idx][0],
+                                                       False)
                 self.points += blank_points
                 for i in range(self.end_blank_repeat_num):
                     self.points.append(self.__to_ilda_point(self.contour_list[next_idx][0], False))
                 current_contour_index = next_idx
         # 增加运动点位返回起点
         if self.__is_all_counter_used():
-            blank_points = self.__get_points_between(self.contour_list[current_contour_index][-1],
-                                                     self.contour_list[0][0],
-                                                     False)
+            blank_points = self.get_points_between(self.contour_list[current_contour_index][-1],
+                                                   self.contour_list[0][0],
+                                                   False)
             self.points += blank_points
         point_image = np.zeros(image.shape)
         for i in self.org_points:
@@ -105,7 +106,7 @@ class ImageILDAConverter:
                 return False
         return True
 
-    def __get_points_between(self, point1, point2, enable=True):
+    def get_points_between(self, point1, point2, enable=True):
         points = []
         dis = math.sqrt(math.pow(point1[0] - point2[0], 2) + math.pow(point1[1] - point2[1], 2)) * self.scales
         if enable:
@@ -129,12 +130,15 @@ class ImageILDAConverter:
         return points
 
     def __to_ilda_point(self, point, enable):
-        x = int(point[0] * self.scales) - 32768
+        x = int(point[0] * self.scales) - 32767
         #  y 反向
-        y = -(int(point[1] * self.scales) - 32768)
-        color = self.image[int(point[1]), int(point[0])]
-        color_bgr = [color[2], color[1], color[0]]
-        color = rgb_to_ilda_color(color_bgr)
+        y = -(int(point[1] * self.scales) - 32767)
+        if self.image is not None:
+            color = self.image[int(point[1]), int(point[0])]
+            color_bgr = [color[2], color[1], color[0]]
+            color = rgb_to_ilda_color(color_bgr)
+        else:
+            color = COLOR.WHITE
         self.org_points.append([int(point[1]), int(point[0])])
         return [x, y, 0, color, enable]
 
