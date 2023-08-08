@@ -4,6 +4,25 @@ import cv2
 import math
 
 
+def point_to_angle(point):
+    x, y, z = point
+    if x == 0 and y == 0:
+        return None, None
+    if y == 0:
+        alpha = None
+    else:
+        alpha = math.atan(z / x) / math.pi * 180
+        alpha = 90 - alpha if alpha > 0 else -(90 + alpha)
+    beta = y / math.pow(math.pow(z, 2) + math.pow(x, 2), 0.5) / math.pi * 180
+    return alpha, beta
+
+
+def is_out_of_signed_short_range(value):
+    if value > 32767 or value < -32767:
+        return True
+    return False
+
+
 def rotationVectorToEulerAngles(rvec):
     R = np.zeros((3, 3), dtype=np.float64)
     cv2.Rodrigues(rvec, R)

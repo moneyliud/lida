@@ -7,9 +7,11 @@ from PyQt5.QtCore import QTimer, Qt, QObject
 from core.lidaGenerator import LidaFile
 from core.imageConverter import ImageILDAConverter
 from core.LIDA import COLOR
+from core.Point3DToLida import Point3DToLida
 import cv2
 import cv2.aruco as aruco
 import os
+import time
 from pathlib import Path
 import serial
 import numpy as np
@@ -30,10 +32,22 @@ class LidaUiManager(QObject):
                              [0.00000000e+00, 1.79632799e+03, 8.53307321e+02],
                              [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
         self.distort = np.array([[0.05228516, -0.23618041, 0.00102657, 0.0011332, 0.33239178]])
+        self.camera_project_trans_mtx = np.array([[1, 0, 0, 0],
+                                                  [0, 1, 0, -10],
+                                                  [0, 0, 1, 0],
+                                                  [0, 0, 0, 1]], np.float64)
         # self.distort = np.array([[0.0001, -0.0001, 0.00098506, 0.000112824, 0.00001]])
-        self.target_point = np.array([230.0, 12.0, 0, 1.0])
+        self.target_point = np.array(
+            [[230.0, 0, 0, 1.0], [230.0, -30, 0, 1.0], [230.0, 30, 0, 1.0], [100.0, 0, 0, 1.0], [100.0, -30, 0, 1.0],
+             [100.0, 30, 0, 1.0]])
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
         self.parameters = aruco.DetectorParameters()
+        self.camera_trans_mtx = np.array([[1, 0, 0, 0],
+                                          [0, 1, 0, -10],
+                                          [0, 0, 1, 0],
+                                          [0, 0, 0, 1]], np.float64)
+        self.min_send_interval = 1
+        self.last_send_time = 0
         self._timer = QTimer(self)
         self.__init_ui()
         self.__connect_equip()
@@ -50,6 +64,7 @@ class LidaUiManager(QObject):
         self.ui.rightBoundary.clicked.connect(self.__project_boundary)
         self.ui.downBoundary.clicked.connect(self.__project_boundary)
         self.ui.wholeBoundary.clicked.connect(self.__project_boundary)
+        self.ui.findTarget.clicked.connect(self.__project_target_image)
 
     def __init_camera(self):
         self.camera = cv2.VideoCapture(0)
@@ -127,6 +142,7 @@ class LidaUiManager(QObject):
             rvecs_list = []
             tvecs_list = []
             rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, 83.12, self.mtx, self.distort)
+            trans_mat = None
             for i in range(rvec.shape[0]):
                 cv2.drawFrameAxes(self.frame, self.mtx, self.distort, rvec[i, :, :], tvec[i, :, :], 80)
                 aruco.drawDetectedMarkers(self.frame, corners)
@@ -135,8 +151,8 @@ class LidaUiManager(QObject):
                     cv2.Rodrigues(rvec[i][0], r)
                     trans_mat = np.concatenate((np.concatenate((r, tvec[i][0].reshape(3, 1)), axis=1), [[0, 0, 0, 1]]),
                                                axis=0)
-                    inv_mat = np.linalg.inv(trans_mat)
-                    tp = np.dot(trans_mat, self.target_point)
+                    self.camera_trans_mtx = trans_mat
+                    tp = np.dot(trans_mat, self.target_point[0])
                     self.ui.x_label_2.setText(str(tp[0]))
                     self.ui.y_label_2.setText(str(tp[1]))
                     self.ui.z_label_2.setText(str(tp[2]))
@@ -149,6 +165,7 @@ class LidaUiManager(QObject):
             #     cv2.drawFrameAxes(self.frame, self.mtx, self.distort, rvecs, tvecs, 300)
             # aruco.drawAxis(self.frame, self.mtx, self.distort, rvecs, tvecs, 0.1)  # Draw Axis
             # aruco.drawDetectedMarkers(self.frame, corners)
+            self.__send_bytes(self.generate_point3d_lida(self.target_point, self.camera_trans_mtx))
             h, w = self.frame.shape[:2]
             newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.mtx, self.distort, (w, h), 0, (w, h))
             self.frame = cv2.undistort(self.frame, self.mtx, self.distort, None, newcameramtx)
@@ -159,6 +176,19 @@ class LidaUiManager(QObject):
             self.ui.x_label.setText(str(tvec[0][0]))
             self.ui.y_label.setText(str(tvec[0][1]))
             self.ui.z_label.setText(str(tvec[0][2]))
+        pass
+
+    def __project_target_image(self):
+        self.__send_bytes(self.generate_point3d_lida(self.target_point, self.camera_trans_mtx))
+        pass
+
+    def generate_point3d_lida(self, points, trans_mat):
+        converter = Point3DToLida()
+        converter.camera_project_trans_mtx = self.camera_project_trans_mtx
+        converter.camera_trans_mtx = trans_mat
+        for point in points:
+            converter.add_point(point)
+        return converter.to_bytes()
         pass
 
     def __calculate_rtvec(self, rvecs_list, tvecs_list):
@@ -176,8 +206,10 @@ class LidaUiManager(QObject):
         converter = ImageILDAConverter()
         converter.scales = 1
         converter.laser_point_interval = 500
-        max_boundary = 60000
-        min_boundary = 5000
+        # max_boundary = 60000
+        # min_boundary = 5000
+        max_boundary = 65534
+        min_boundary = 0
         if "up" in p_button.objectName():
             points = [[min_boundary, min_boundary], [max_boundary, min_boundary]]
         elif "left" in p_button.objectName():
@@ -206,7 +238,8 @@ class LidaUiManager(QObject):
     def __send_bytes(self, image_bytes):
         file_len = len(image_bytes)
         buffer_size = 2048
-        if self.serial_connect.isOpen():
+        interval = time.time() - self.last_send_time
+        if self.serial_connect.isOpen() and interval > self.min_send_interval:
             self.serial_connect.write(bytes([0xAA, 0xBB]))
             self.serial_connect.write(file_len.to_bytes(4, "little"))
             write_len = 0
@@ -216,3 +249,4 @@ class LidaUiManager(QObject):
                 # print(end)
                 write_len += buffer_size
             self.serial_connect.flush()
+            self.last_send_time = time.time()
