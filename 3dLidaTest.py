@@ -32,20 +32,22 @@ if __name__ == "__main__":
              [255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255],
              [255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255],
              [255, 255, 255], [255, 255, 255], [255, 255, 0], [255, 255, 0]]
-    trans_mat = np.linalg.inv(np.array([[0, 0, 1, -148],
-                                        [0, -1, 0, 12846.6],
-                                        [1, 0, 0, 1408.687],
+    trans_mat = np.linalg.inv(np.array([[0, 0, 1, -300.8],
+                                        [0, -1, 0, 12720.053],
+                                        [1, 0, 0, 1628.281],
                                         [0, 0, 0, 1]]))
-    rotate_angle = -21 / 180 * math.pi
-    rotate_mat_y = np.array([[math.cos(rotate_angle), 0, math.sin(rotate_angle), 0],
+    rotate_angle_x = -26 / 180 * math.pi
+    rotate_angle_y = 12 / 180 * math.pi
+    rotate_mat_y = np.array([[math.cos(rotate_angle_y), 0, math.sin(rotate_angle_y), 0],
                              [0, 1, 0, 0],
-                             [-math.sin(rotate_angle), 0, math.cos(rotate_angle), 0],
+                             [-math.sin(rotate_angle_y), 0, math.cos(rotate_angle_y), 0],
                              [0, 0, 0, 1]])
     rotate_mat_x = np.array([[1, 0, 0, 0],
-                             [0, math.cos(rotate_angle), -math.sin(rotate_angle), 0],
-                             [0, math.sin(rotate_angle), math.cos(rotate_angle), 0],
+                             [0, math.cos(rotate_angle_x), -math.sin(rotate_angle_x), 0],
+                             [0, math.sin(rotate_angle_x), math.cos(rotate_angle_x), 0],
                              [0, 0, 0, 1]])
     trans_mat = np.dot(rotate_mat_x, trans_mat)
+    trans_mat = np.dot(rotate_mat_y, trans_mat)
     b = [[1.0]] * len(target_point)
     target_point = np.concatenate((target_point, b), 1)
     file_bytes = generate_point3d_lida(target_point, trans_mat, color)
