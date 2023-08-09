@@ -21,7 +21,7 @@ class ImageILDAConverter:
         self.contour_list = None
         self.end_blank_repeat_num = 3
         self.tiny_contour_repeat_num = 4
-        self.dis_threshold = 2000
+        self.dis_threshold = 800
         pass
 
     def convert(self, image):

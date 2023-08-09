@@ -72,7 +72,7 @@ class LidaUiManager(QObject):
         # 定时器：30ms捕获一帧
         self._timer.timeout.connect(self.__get_camera_image)
         self._timer.setInterval(30)
-        self._timer.start()
+        # self._timer.start()
 
     def __select_image(self):
         file_name = QFileDialog.getOpenFileNames(self.main_window, '选择图像', os.getcwd(),

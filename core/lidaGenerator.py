@@ -32,6 +32,7 @@ class LidaHeader:
         self.frame_length = 0  # 2byte
         self.frame_index = 0  # 2byte
         self.total_frame = 0  # 2byte
+        self.duration = 0  # 持续时间
         self.head = 0  # 1byte
         self.end = 0  # 1byte
 
@@ -39,14 +40,15 @@ class LidaHeader:
         header_bytes = bytearray(32)
         header_bytes[0:4] = self.LIDA
         header_bytes[4:8] = self.type.to_bytes(4, self.BYTE_ORDER)
-        header_bytes[8:16] = bytes(self.name[0:8], self.ENCODING)
+        header_bytes[8:16] = bytes(self.name.ljust(8)[0:8], self.ENCODING)
         header_bytes[15] = 0x20
-        header_bytes[16:24] = bytes(self.company[0:8], self.ENCODING)
+        header_bytes[16:24] = bytes(self.company.ljust(8)[0:8], self.ENCODING)
         header_bytes[23] = 0x20
         header_bytes[24:26] = self.frame_length.to_bytes(2, self.BYTE_ORDER)
         header_bytes[26:28] = self.frame_index.to_bytes(2, self.BYTE_ORDER)
         header_bytes[28:30] = self.total_frame.to_bytes(2, self.BYTE_ORDER)
-        header_bytes[30:32] = [0x00, 0x00]
+        header_bytes[30] = 0x00
+        header_bytes[31] = self.duration.to_bytes(1, self.BYTE_ORDER)[0]
         return header_bytes
 
 

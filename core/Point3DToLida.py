@@ -16,7 +16,7 @@ class Point3DToLida(ImageILDAConverter):
         self.y_angle_interval = [-16.7, 16.7]
         self.point_max = 65535
         self.lida_file = LidaFile()
-        self.point_size = 4
+        self.point_size = 1200
         self.scales = 1.0
         self.contour_list = []
 
@@ -42,7 +42,11 @@ class Point3DToLida(ImageILDAConverter):
                 if self.point_size / 2 - 1 < math.pow((x1 - x) ** 2 + (y1 - y) ** 2, 0.5) <= self.point_size / 2:
                     contour.append([x1, y1, color])
                     break
+        if self.point_size > 50:
+            contour_interval = int(self.point_size / 15)
+            contour = contour[::contour_interval]
         self.contour_list.append(contour)
+
     pass
 
     def add_contour(self, contour, color):
@@ -67,14 +71,19 @@ class Point3DToLida(ImageILDAConverter):
                 y = int(beta / self.y_angle_interval[1] * int(self.point_max / 2)) + int(self.point_max / 2)
         return [x, y]
 
-    def to_bytes(self):
+    def new_frame(self, duration=0):
         self.contour_list = np.array(self.contour_list, dtype=object)
         points = self.convert_contour_to_projection()
         self.lida_file.name = "actual"
         self.lida_file.company = "buz141"
         self.lida_file.new_frame()
+        self.lida_file.frames[self.lida_file.cur_frame_index].header.duration = duration
         print(len(points))
         for i in range(len(points)):
             point = points[i]
             self.lida_file.add_point(point[0], point[1], point[2], point[3], point[4])
+        self.contour_list = []
+        self.points = []
+
+    def to_bytes(self):
         return self.lida_file.to_bytes()
