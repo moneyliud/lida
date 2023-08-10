@@ -1,8 +1,10 @@
 import math
 
 from core.Point3DToLida import Point3DToLida
+from core.PointAddStrategy import CirclePointStrategy
 import numpy as np
 import serial
+import cv2
 
 
 def generate_point3d_lida(points, trans_mat, color):
@@ -11,9 +13,16 @@ def generate_point3d_lida(points, trans_mat, color):
                                                    [0, 1, 0, 0],
                                                    [0, 0, 1, 0],
                                                    [0, 0, 0, 1]], np.float64)
+    image1 = cv2.imread("C:\\Users\\Administrator\\Pictures\\527NKJ84.png")
+    image2 = cv2.imread("C:\\Users\\Administrator\\Pictures\\00328.png")
+    image3 = cv2.imread("C:\\Users\\Administrator\\Pictures\\506K8.png")
+    converter.new_frame(duration=3)
+    converter.add_image(image1)
+
     converter.camera_trans_mtx = trans_mat
+    converter.set_strategy(CirclePointStrategy())
     for i in range(len(points)):
-        converter.add_point(points[i], color[i])
+        converter.add_point(points[i], np.array([0, 255, 0]))
     converter.new_frame(duration=3)
 
     points1 = points[np.where((color == [255, 255, 0]).all(axis=-1))]
