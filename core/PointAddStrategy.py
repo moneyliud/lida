@@ -5,7 +5,7 @@ import math
 class CirclePointStrategy(PointAddInterface):
     def __init__(self):
         super().__init__()
-        self.point_size = 4
+        self.point_size = 1200
 
     def get_contour(self, x, y, color):
         contour = []
