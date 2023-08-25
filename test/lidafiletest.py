@@ -15,6 +15,6 @@ if __name__ == '__main__':
     for i in range(len(points)):
         point = points[i]
         lidaFile.add_point(point[0], point[1], point[2], point[3], point[4])
-    file = open("./test.ild", 'wb')
+    file = open("../test.ild", 'wb')
     file.write(lidaFile.to_bytes())
     # cv2.waitKey(0)

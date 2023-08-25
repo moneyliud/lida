@@ -20,6 +20,7 @@ class Point3DToLida(ImageILDAConverter):
         super().__init__()
         self.camera_project_trans_mtx: array = np.diag([1, 1, 1])
         self.camera_trans_mtx: array = np.diag([1, 1, 1])
+        self.projector_in_mtx: array = np.diag([1, 1, 1])
         self.x_angle_interval = [-16.7, 16.7]
         self.y_angle_interval = [-16.7, 16.7]
         self.point_max = 65535
@@ -43,7 +44,8 @@ class Point3DToLida(ImageILDAConverter):
         contour_format = []
         if contour is not None and len(contour) > 0:
             for point in contour:
-                format_point = self.point3d_to_image_point(point).append(color)
+                format_point = self.point3d_to_image_point(point)
+                format_point.append(color)
                 contour_format.append(format_point)
             self.contour_list.append(contour_format)
         pass
@@ -53,12 +55,17 @@ class Point3DToLida(ImageILDAConverter):
         if self.camera_trans_mtx is not None:
             actual_point = np.dot(self.camera_trans_mtx, point)
             actual_point = np.dot(self.camera_project_trans_mtx, actual_point)
-            alpha, beta = point_to_angle(actual_point[0:3])
-            if alpha is not None:
-                x = int(alpha / self.x_angle_interval[1] * int(self.point_max / 2)) + int(self.point_max / 2)
-            if beta is not None:
-                # 投影仪二维右手系转图像二维左手系
-                y = int(beta / self.y_angle_interval[1] * int(self.point_max / 2)) + int(self.point_max / 2)
+            actual_point = np.dot(self.projector_in_mtx, actual_point[0:3])
+            actual_point = actual_point / actual_point[2]
+            print(actual_point)
+            x, y = actual_point[0], actual_point[1]
+            # alpha, beta = point_to_angle(actual_point[0:3])
+            # if alpha is not None:
+            #     x = int(alpha / self.x_angle_interval[1] * int(self.point_max / 2)) + int(self.point_max / 2)
+            # if beta is not None:
+            #     # 投影仪二维右手系转图像二维左手系
+            #     y = int(beta / self.y_angle_interval[1] * int(self.point_max / 2)) + int(self.point_max / 2)
+            print(x, y)
         return [x, y]
 
     def new_frame(self, duration=0):

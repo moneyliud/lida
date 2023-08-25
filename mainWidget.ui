@@ -404,6 +404,32 @@
      <string>自动配准</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="projectorCaliBtn">
+    <property name="geometry">
+     <rect>
+      <x>260</x>
+      <y>580</y>
+      <width>75</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>投影仪标定</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="projectorCameraCaliBtn">
+    <property name="geometry">
+     <rect>
+      <x>260</x>
+      <y>550</y>
+      <width>75</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>外参标定</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>

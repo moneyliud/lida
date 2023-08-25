@@ -7,7 +7,8 @@ import serial
 import cv2
 
 
-def generate_point3d_lida(points, trans_mat, color):
+def \
+        generate_point3d_lida(points, trans_mat, color):
     converter = Point3DToLida()
     converter.camera_project_trans_mtx = np.array([[1, 0, 0, 0],
                                                    [0, 1, 0, 0],
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     b = [[1.0]] * len(target_point)
     target_point = np.concatenate((target_point, b), 1)
     file_bytes = generate_point3d_lida(target_point, trans_mat, color)
-    file = open("./product.ild", 'wb')
+    file = open("../product.ild", 'wb')
     file.write(file_bytes)
 
     file_len = len(file_bytes)

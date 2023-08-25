@@ -19,7 +19,7 @@ class ImageILDAConverter:
         self.org_points = []
         self.contour_use_flag = None
         self.contour_list = None
-        self.end_blank_repeat_num = 3
+        self.end_blank_repeat_num = 10
         self.tiny_contour_repeat_num = 4
         self.dis_threshold = 800
         pass
@@ -78,11 +78,17 @@ class ImageILDAConverter:
                     self.__append_point(self.points, self.__to_ilda_point(self.contour_list[next_idx][0], False))
                 current_contour_index = next_idx
         # 增加运动点位返回起点
-        if self.__is_all_counter_used():
+        if self.__is_all_counter_used() and len(self.points) > 10:
+            for i in range(self.end_blank_repeat_num * 3):
+                self.__append_point(self.points,
+                                    self.__to_ilda_point(self.contour_list[current_contour_index][-1], False))
             blank_points = self.get_points_between(self.contour_list[current_contour_index][-1],
                                                    self.contour_list[0][0],
                                                    False)
+
             self.points += blank_points
+            for i in range(self.end_blank_repeat_num * 3):
+                self.__append_point(self.points, self.__to_ilda_point(self.contour_list[0][0], False))
         if self.image is not None:
             point_image = np.zeros(self.image.shape)
             for i in self.org_points:
