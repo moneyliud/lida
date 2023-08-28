@@ -57,7 +57,7 @@ class Point3DToLida(ImageILDAConverter):
             actual_point = np.dot(self.camera_project_trans_mtx, actual_point)
             actual_point = np.dot(self.projector_in_mtx, actual_point[0:3])
             actual_point = actual_point / actual_point[2]
-            print(actual_point)
+            # print(actual_point)
             x, y = actual_point[0], actual_point[1]
             # alpha, beta = point_to_angle(actual_point[0:3])
             # if alpha is not None:

@@ -8,6 +8,7 @@ from pathlib import Path
 import serial
 import numpy as np
 import time
+from copy import deepcopy
 import threading
 from mainWidget import Ui_MainWindow
 from PyQt5.QtWidgets import QFileDialog, QMainWindow, QMessageBox
@@ -19,7 +20,10 @@ from core.LIDA import COLOR
 from core.Point3DToLida import Point3DToLida
 from core.calibrate.laserProjectorCali import LaserProjectorCalibration
 from core.utils import rotationVectorToEulerAngles
-from core.PointAddStrategy import SinglePointStrategy
+from core.PointAddStrategy import SinglePointStrategy, CirclePointStrategy
+from core.extrinsic.extrinsicsFinderInterface import ExtrinsicFinderInterface
+from core.extrinsic import pointFinder, arucoFinder
+import core.extrinsic as extrinsic
 
 
 class LidaUiManager(QObject):
@@ -46,9 +50,17 @@ class LidaUiManager(QObject):
                                                   [0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.00000000e+00]],
                                                  np.float64)
         # self.distort = np.array([[0.0001, -0.0001, 0.00098506, 0.000112824, 0.00001]])
+        # self.target_point = np.array(
+        #     [[230.0, 0, 0, 1.0], [230.0, -30, 0, 1.0], [230.0, 30, 0, 1.0], [100.0, 0, 0, 1.0], [100.0, -30, 0, 1.0],
+        #      [100.0, 30, 0, 1.0]])
         self.target_point = np.array(
-            [[230.0, 0, 0, 1.0], [230.0, -30, 0, 1.0], [230.0, 30, 0, 1.0], [100.0, 0, 0, 1.0], [100.0, -30, 0, 1.0],
-             [100.0, 30, 0, 1.0]])
+            [[0, 30, 0, 1.0], [0, 60, 0, 1.0], [0, 90, 0, 1.0], [0, 120, 0, 1.0], [0, 150, 0, 1.0], [0, 180, 0, 1.0],
+             [0, 210, 0, 1.0], [0, 240, 0, 1.0],
+             [184.4, 30, 0, 1.0], [184.4, 60, 0, 1.0], [184.4, 90, 0, 1.0], [184.4, 120, 0, 1.0], [184.4, 150, 0, 1.0],
+             [184.4, 180, 0, 1.0], [184.4, 210, 0, 1.0], [184.4, 240, 0, 1.0],
+             [30, 265, 0, 1.0], [60, 265, 0, 1.0], [90, 265, 0, 1.0], [120, 265, 0, 1.0], [150, 265, 0,
+                                                                                           1.0],
+             [30, 0, 0, 1.0], [60, 0, 0, 1.0], [90, 0, 0, 1.0], [120, 0, 0, 1.0], [150, 0, 0, 1.0]])
         self.target_contour = np.array(
             [[-50, 50, 0, 1.0], [50, 50, 0, 1.0], [50, -50, 0, 1.0], [-50, -50, 0, 1.0],
              [-50, 50, 0, 1.0]])
@@ -61,14 +73,19 @@ class LidaUiManager(QObject):
                                           [0, 1, 0, 0],
                                           [0, 0, 1, 0],
                                           [0, 0, 0, 1]], np.float64)
+        self.extrinsic_finder: ExtrinsicFinderInterface = ExtrinsicFinderInterface()
+        self.ex_theory_point = np.array([[[0, 0, 0], [184.4, 0, 0]], [[0, 265, 0], [184.4, 265, 0]]])
         self.calibrator = LaserProjectorCalibration()
         self.min_send_interval = 1
         self.last_send_time = 0
+        self.save_video = True
+        self.__init_extrinsic_finder(extrinsic.MARK_POINT_FINDER)
         self._timer = QTimer(self)
         self._cali_timer = QTimer(self)
         self.__init_ui()
         self.__connect_equip()
         self.__init_camera()
+        self.__save_video_init()
 
     def __connect_equip(self):
         self.serial_connect = serial.Serial("COM3", 115200)
@@ -129,79 +146,44 @@ class LidaUiManager(QObject):
         img_rows, img_cols, channels = self.frame.shape
         bytesPerLine = channels * img_cols
         self.__process_frame()
+        frame_copy = deepcopy(self.frame)
         cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB, self.frame)
         QImg = QImage(self.frame.data, img_cols, img_rows, bytesPerLine, QImage.Format_RGB888)
         self.ui.cameraLabel.setPixmap(
             QPixmap.fromImage(QImg).scaled(self.ui.cameraLabel.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        if self.save_video:
+            self.out_video.write(frame_copy)
+        pass
+
+    def __init_extrinsic_finder(self, finder_type):
+        if finder_type == "MARK_POINT":
+            self.extrinsic_finder = pointFinder.PointFinder()
+            self.extrinsic_finder.set_param(self.mtx, self.distort, self.ex_theory_point)
+        if finder_type == "ARUCO":
+            self.extrinsic_finder = arucoFinder.ArucoFinder()
+            self.extrinsic_finder.set_param(self.mtx, self.distort)
         pass
 
     def __process_frame(self):
         gray_frame = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
         if self.calibrator.start_cali:
             self.calibrator.add_image(gray_frame)
-        '''
-        detectMarkers(...)
-            detectMarkers(image, dictionary[, corners[, ids[, parameters[, rejectedI
-            mgPoints]]]]) -> corners, ids, rejectedImgPoints
-        '''
-
-        # lists of ids and the corners beloning to each id
-        # detecter = aruco.ArucoDetector()
-        # detecter.setDetectorParameters(parameters)
-        # detecter.setDictionary(aruco_dict)
-        # corners, ids, rejectedImgPoints = detecter.detectMarkers(gray_frame)
-        corners, ids, rejectedImgPoints = aruco.detectMarkers(gray_frame,
-                                                              self.aruco_dict,
-                                                              parameters=self.parameters)
-        obj_points = np.array([[0, 0, 0], [0, self.aruco_image_len, 0], [self.aruco_image_len, self.aruco_image_len, 0],
-                               [self.aruco_image_len, 0, 0]], dtype=np.float32)
-
+        self.camera_trans_mtx, angle = self.extrinsic_finder.get_extrinsic(gray_frame)
         h, w = self.frame.shape[:2]
-        # newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.mtx, self.distort, (w, h), 0, (w, h))  #
-        if ids is not None:
-            rvecs_list = []
-            tvecs_list = []
-            rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, 83.12, self.mtx, self.distort)
-            trans_mat = None
-            for i in range(rvec.shape[0]):
-                cv2.drawFrameAxes(self.frame, self.mtx, self.distort, rvec[i, :, :], tvec[i, :, :], 80)
-                aruco.drawDetectedMarkers(self.frame, corners)
-                if ids[i][0] == 6:
-                    r = np.zeros((3, 3), dtype=np.float64)
-                    cv2.Rodrigues(rvec[i][0], r)
-                    trans_mat = np.concatenate((np.concatenate((r, tvec[i][0].reshape(3, 1)), axis=1), [[0, 0, 0, 1]]),
-                                               axis=0)
-                    self.camera_trans_mtx = trans_mat
-                    tp = np.dot(trans_mat, self.target_point[0])
-                    self.ui.x_label_2.setText(str(tp[0]))
-                    self.ui.y_label_2.setText(str(tp[1]))
-                    self.ui.z_label_2.setText(str(tp[2]))
-                    # print(trans_mat, inv_mat, ids[i])
-                    # print(tp)
-            # for corner in corners:\
-            #     success, rvecs, tvecs, = cv2.solvePnP(obj_points, corner, self.mtx, self.distort)
-            #     rvecs_list.append(rvecs)
-            #     tvecs_list.append(tvecs)
-            #     cv2.drawFrameAxes(self.frame, self.mtx, self.distort, rvecs, tvecs, 300)
-            # aruco.drawAxis(self.frame, self.mtx, self.distort, rvecs, tvecs, 0.1)  # Draw Axis
-            # aruco.drawDetectedMarkers(self.frame, corners)
-            # self.__send_bytes(self.generate_point3d_lida(self.target_point, self.camera_trans_mtx))
-            h, w = self.frame.shape[:2]
-            newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.mtx, self.distort, (w, h), 0, (w, h))
-            self.frame = cv2.undistort(self.frame, self.mtx, self.distort, None, newcameramtx)
-            r = rotationVectorToEulerAngles(rvec[0])
-            rvec, tvec = self.__calculate_rtvec(rvec, tvec)
-            self.ui.alpha_label.setText(str(r[0]))
-            self.ui.beta_label.setText(str(r[1]))
-            self.ui.gama_label.setText(str(r[2]))
-            self.ui.x_label.setText(str(tvec[0][0]))
-            self.ui.y_label.setText(str(tvec[0][1]))
-            self.ui.z_label.setText(str(tvec[0][2]))
+        newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.mtx, self.distort, (w, h), 0, (w, h))
+        self.frame = cv2.undistort(self.frame, self.mtx, self.distort, None, newcameramtx)
+        if self.camera_trans_mtx is not None and angle is not None:
+            self.ui.alpha_label.setText(str(angle[0]))
+            self.ui.beta_label.setText(str(angle[1]))
+            self.ui.gama_label.setText(str(angle[2]))
+            self.ui.x_label.setText(str(self.camera_trans_mtx[0][3]))
+            self.ui.y_label.setText(str(self.camera_trans_mtx[1][3]))
+            self.ui.z_label.setText(str(self.camera_trans_mtx[2][3]))
         pass
 
     def __project_target_image(self):
-        # file_bytes = self.generate_point3d_lida(self.target_point, self.camera_trans_mtx, self.target_contour)
-        file_bytes = self.generate_point3d_lida(None, self.camera_trans_mtx, self.target_contour)
+        file_bytes = self.generate_point3d_lida(self.target_point, self.camera_trans_mtx, None)
+        # file_bytes = self.generate_point3d_lida(None, self.camera_trans_mtx, self.target_contour)
         file = open("target.ild", 'wb')
         file.write(file_bytes)
         self.__send_bytes(file_bytes)
@@ -212,7 +194,11 @@ class LidaUiManager(QObject):
         converter.projector_in_mtx = self.projector_in_mtx
         converter.camera_project_trans_mtx = self.camera_project_trans_mtx
         converter.camera_trans_mtx = trans_mat
-        converter.set_strategy(SinglePointStrategy())
+        strategy = SinglePointStrategy()
+        converter.end_blank_repeat_num = 1
+        converter.tiny_contour_repeat_num = 5
+        # strategy.point_size = 300
+        converter.set_strategy(strategy)
         if points is not None:
             for point in points:
                 converter.add_point(point)
@@ -222,11 +208,6 @@ class LidaUiManager(QObject):
         converter.new_frame(0)
         return converter.to_bytes()
         pass
-
-    def __calculate_rtvec(self, rvecs_list, tvecs_list):
-        if len(rvecs_list) > 0 and len(tvecs_list) > 0:
-            return rvecs_list[0], tvecs_list[0]
-        return None, None
 
     def __project_boundary(self):
         p_button = self.sender()
@@ -304,3 +285,14 @@ class LidaUiManager(QObject):
                 write_len += buffer_size
             self.serial_connect.flush()
             self.last_send_time = time.time()
+
+    def __save_video_init(self):
+        if not self.save_video:
+            return
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fps = 10
+        # fps = self.camera.get(cv2.CAP_PROP_FPS)
+        self.out_video = cv2.VideoWriter()
+        self.image_width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.image_height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        flag = self.out_video.open('result.mp4', fourcc, fps, (self.image_width, self.image_height))
