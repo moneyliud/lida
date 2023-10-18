@@ -1,29 +1,28 @@
 # -*- coding: utf-8 -*-
 
-import cv2
-import cv2.aruco as aruco
 import os
 import time
-from pathlib import Path
-import serial
-import numpy as np
-import time
 from copy import deepcopy
-import threading
-from mainWidget import Ui_MainWindow
-from PyQt5.QtWidgets import QFileDialog, QMainWindow, QMessageBox
-from PyQt5.QtGui import QPixmap, QImage
+from pathlib import Path
+
+import cv2
+import cv2.aruco as aruco
+import numpy as np
+import serial
 from PyQt5.QtCore import QTimer, Qt, QObject
-from core.lidaGenerator import LidaFile
-from core.imageConverter import ImageILDAConverter
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtWidgets import QFileDialog, QMainWindow, QMessageBox
+
+import core.extrinsic as extrinsic
 from core.LIDA import COLOR
 from core.Point3DToLida import Point3DToLida
+from core.PointAddStrategy import SinglePointStrategy
 from core.calibrate.laserProjectorCali import LaserProjectorCalibration
-from core.utils import rotationVectorToEulerAngles
-from core.PointAddStrategy import SinglePointStrategy, CirclePointStrategy
-from core.extrinsic.extrinsicsFinderInterface import ExtrinsicFinderInterface
 from core.extrinsic import pointFinder, arucoFinder
-import core.extrinsic as extrinsic
+from core.extrinsic.extrinsicsFinderInterface import ExtrinsicFinderInterface
+from core.imageConverter import ImageILDAConverter
+from core.lidaGenerator import LidaFile
+from mainWidget import Ui_MainWindow
 
 
 class LidaUiManager(QObject):
@@ -66,6 +65,7 @@ class LidaUiManager(QObject):
              [-50, 50, 0, 1.0]])
         # self.target_point = np.array(
         #     [[0, 0, 0, 1.0]])
+        self.cali_image_index = 0
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
         self.parameters = aruco.DetectorParameters()
 
@@ -250,21 +250,27 @@ class LidaUiManager(QObject):
 
     def __save_camera_cali_image(self):
         if self.calibrator.is_start():
-            cv2.imwrite("cali.jpg", self.calibrator.image)
+            cv2.imwrite("caliImage\\cali" + str(self.calibrator.image_idx) + ".jpg", self.calibrator.image)
             self.calibrator.stop_record_cali_img()
-        self._cali_timer.stop()
+            self._cali_timer.stop()
+            if self.calibrator.has_next_image:
+                self.__generate_one_cali_image()
         pass
 
     def __projector_calibration(self):
-        self.calibrator.set_param(7, 7)
+        self.calibrator.init(row=7, col=7, offset_y=17000, cali_img_interval=5000, xy_num=3)
+        self._cali_timer.timeout.connect(self.__save_camera_cali_image)
+        self._cali_timer.setInterval(3000)
+        self.__generate_one_cali_image()
+        pass
+
+    def __generate_one_cali_image(self):
         image_file = self.calibrator.get_projection_image()
         self.__send_bytes(image_file.to_bytes())
-        self.calibrator.start_record_cali_img()
         time.sleep(1)
-        self._cali_timer.timeout.connect(self.__save_camera_cali_image)
-        self._cali_timer.setInterval(5000)
+        self.calibrator.start_record_cali_img()
+        self.cali_image_index += 1
         self._cali_timer.start()
-        pass
 
     def __projector_camera_calibration(self):
         pass
