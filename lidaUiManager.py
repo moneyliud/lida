@@ -250,7 +250,7 @@ class LidaUiManager(QObject):
 
     def __save_camera_cali_image(self):
         if self.calibrator.is_start():
-            cv2.imwrite("caliImage\\cali" + str(self.calibrator.image_idx) + ".jpg", self.calibrator.image)
+            cv2.imwrite("caliImage\\cali" + str(self.calibrator.image_idx).zfill(3) + ".jpg", self.calibrator.image)
             self.calibrator.stop_record_cali_img()
             self._cali_timer.stop()
             if self.calibrator.has_next_image:
@@ -260,7 +260,7 @@ class LidaUiManager(QObject):
     def __projector_calibration(self):
         self.calibrator.init(row=7, col=7, offset_y=17000, cali_img_interval=5000, xy_num=3)
         self._cali_timer.timeout.connect(self.__save_camera_cali_image)
-        self._cali_timer.setInterval(3000)
+        self._cali_timer.setInterval(1500)
         self.__generate_one_cali_image()
         pass
 

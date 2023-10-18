@@ -29,7 +29,7 @@ class LaserProjectorCalibration:
         self.camera_dist = None
         self.start_cali = False
         self.cali_count = 0
-        self.max_image_num = 100
+        self.max_image_num = 50
         self.projector_width = 65535
         self.projector_height = 65535
         self.xy_num = 4
@@ -81,7 +81,7 @@ class LaserProjectorCalibration:
         self.xy_num = xy_num
         self.idx_x = 0
         self.idx_y = 0
-        self.cali_img_interval = 10000
+        self.cali_img_interval = cali_img_interval
         self.image_idx = 0
         self.has_next_image = True
         pass
@@ -130,35 +130,37 @@ class LaserProjectorCalibration:
         contour = self.point_strategy.get_contour(x, y, [255, 255, 255])
         return contour, (x, y)
 
-    def calibrate(self, images):
+    def calibrate(self, images, image_indexes):
         checker_point_list = []
         gray_image_list = []
         for image in images:
             h, w = image.shape[:2]
             new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(self.camera_mtx, self.camera_dist, (w, h), 0, (w, h))  #
-            distort_image = cv2.undistort(image, self.camera_mtx, self.camera_dist, None, new_camera_mtx)
-            gray_image = cv2.cvtColor(distort_image, cv2.COLOR_BGR2GRAY)
+            # distort_image = cv2.undistort(image, self.camera_mtx, self.camera_dist, None, new_camera_mtx)
+            # gray_image = cv2.cvtColor(distort_image, cv2.COLOR_BGR2GRAY)
+            gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             checker_points = self.find_circle_center(gray_image)
             checker_point_list.append(checker_points)
             gray_image_list.append(gray_image)
-        self.cali_projector(gray_image_list, checker_point_list)
+        self.cali_projector(gray_image_list, checker_point_list, image_indexes)
 
     def find_circle_center(self, gray_image):
         ret, white_image = cv2.threshold(gray_image, 240, 255, cv2.THRESH_BINARY)
         self.__output_img("white_image", white_image)
         contour_list, hierarchy = cv2.findContours(white_image, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-        # contour_image = np.zeros(white_image.shape)
-        # new_contour_list = []
+        contour_image = np.zeros(white_image.shape)
+        new_contour_list = []
         circle_list = []
         checker_points = []
         for i in range(len(contour_list)):
-            if hierarchy[0][i][-1] == -1:
-                # new_contour_list.append(contour_list[i])
+            # 边缘长度>10排除噪声点
+            if hierarchy[0][i][-1] == -1 and len(contour_list[i]) > 10:
+                new_contour_list.append(contour_list[i])
                 center, radius = cv2.minEnclosingCircle(contour_list[i])
                 circle_list.append([int(center[0]), int(center[1]), int(radius)])
                 checker_points.append([center[0], center[1]])
-        # contour_image = cv2.drawContours(contour_image, new_contour_list, -1, (175, 0, 175), -1)
-        # self.__output_img("counter_img", contour_image)
+        contour_image = cv2.drawContours(contour_image, new_contour_list, -1, (175, 0, 175), 0)
+        self.__output_img("counter_img", contour_image)
         # center_image = np.zeros(white_image.shape)
         # # img = cv2.medianBlur(gray_img, 5)
         # for i in circle_list:
@@ -169,9 +171,16 @@ class LaserProjectorCalibration:
         #     cv2.circle(distort_image, (i[0], i[1]), 2, (255, 255, 255), 2)
         # self.__output_img("center_image", center_image)
         # self.__output_img("distort_image", distort_image)
+        # x从小到大，y从小到大，顺序不能错，重要！
+        checker_points = np.array(checker_points)
+        checker_points = checker_points[checker_points[:, 1].argsort()]
+        for i in range(self.col_num):
+            start, end = i * self.row_num, (i + 1) * self.row_num
+            sub_list = checker_points[start:end]
+            checker_points[start:end] = sub_list[sub_list[:, 0].argsort()]
         return checker_points
 
-    def cali_projector(self, gray_image_list, checker_points):
+    def cali_projector(self, gray_image_list, checker_points, image_indexes):
         checker_board_points = []
         checker_word_points = []
         # 棋盘格模板规格
@@ -183,16 +192,41 @@ class LaserProjectorCalibration:
         real_pos[:, 1] *= 30
         objp[:, :2] = real_pos
         gray_img_shape = None
+        i = 0
+        rvecs = []
+        tvecs = []
         for gray_image in gray_image_list:
+            self.__output_img("gray_img" + str(i), gray_image)
+            i += 1
             # h, w = gray_image.shape[:2]
             gray_img_shape = gray_image.shape
             ret, corners = cv2.findChessboardCorners(gray_image, (w, h), flags=cv2.CALIB_CB_ADAPTIVE_THRESH)
             print(ret, len(corners))
             if ret:
                 checker_word_points.append(objp)
+                corners = corners.reshape(-1, 2)
+                corners = corners[corners[:, 1].argsort()]
+                for i in range(h):
+                    start, end = i * w, (i + 1) * w
+                    sub_list = corners[start:end]
+                    corners[start:end] = sub_list[sub_list[:, 0].argsort()]
+                corners = np.expand_dims(corners, 1)
                 checker_board_points.append(corners)
-        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(checker_word_points, checker_board_points,
-                                                           gray_img_shape[::-1], None, None)
+                success, rvec, tvec, = cv2.solvePnP(objp, corners, self.camera_mtx, self.camera_dist)
+                rvecs.append(rvec)
+                tvecs.append(tvec)
+                # print(corners)
+        # ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(checker_word_points, checker_board_points,
+        #                                                    gray_img_shape[::-1], None, None)
+        # 反投影误差
+        total_error = 0
+        for i in range(len(checker_word_points)):
+            imgpoints2, _ = cv2.projectPoints(checker_word_points[i], rvecs[i], tvecs[i], self.camera_mtx,
+                                              self.camera_dist)
+            error = cv2.norm(checker_board_points[i], imgpoints2, cv2.NORM_L2) / len(imgpoints2)
+            # print(i, error)
+            total_error += error
+        print("camera total error: ", total_error / len(checker_board_points))
         word_point_list = []
         projector_point_list = []
         trans_mat_list = []
@@ -210,10 +244,11 @@ class LaserProjectorCalibration:
             trans_mat_list.append(trans_mat)
             in_mtx_inv = np.linalg.inv(self.camera_mtx)
             trans_inv = np.linalg.inv(trans_mat)
+            print("trans_inv=", trans_inv)
             krt_inv = np.linalg.inv(np.concatenate((self.camera_mtx.dot(trans_mat[0:3]), [[0, 0, 0, 1]]), axis=0))
             r_inv = np.linalg.inv(r)
             for point in checker_points[i]:
-                point.append(1)
+                point = np.append(point, 1)
                 # point.append(1)
                 word_point = in_mtx_inv.dot(point)
                 # word_point = np.append(word_point, 1)
@@ -237,9 +272,11 @@ class LaserProjectorCalibration:
             cur_projector_point_list = []
 
             # 按先行再列的生成顺序，与opencv棋盘格标定时坐标轴顺序一致
-            for i in range(self.row_num - 1, -1, -1):
-                for j in range(self.col_num):
-                    cur_projector_point_list.append([self.__generate_one_point(j, i)[1]])
+            self.idx_x, self.idx_y = image_indexes[i]
+            # for j in range(self.row_num - 1, -1, -1):
+            for j in range(self.row_num):
+                for k in range(self.col_num):
+                    cur_projector_point_list.append([self.__generate_one_point(k, j)[1]])
 
             cur_projector_point_list = np.array(cur_projector_point_list).astype(np.float32)
             # projector_point_list[:, :, 0] -= 32767
@@ -261,11 +298,11 @@ class LaserProjectorCalibration:
         projector_r = np.zeros((3, 3), dtype=np.float64)
         for i in range(len(pro_rvecs)):
             cv2.Rodrigues(pro_rvecs[i], projector_r)
-            # print(ret)
-            # print(mtx)
-            # print(dist)
-            # print(pro_rvecs)
-            # print(pro_tvecs)
+            print(ret)
+            print(mtx)
+            print(dist)
+            print("pro_rvecs=", pro_rvecs[i])
+            print("pro_tvecs=", pro_tvecs[i])
             # print(projector_r)
             trans_mat_pro = np.concatenate(
                 (np.concatenate((projector_r, pro_tvecs[i].reshape(3, 1)), axis=1), [[0, 0, 0, 1]]),
