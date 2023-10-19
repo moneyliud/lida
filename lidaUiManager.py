@@ -23,6 +23,7 @@ from core.extrinsic.extrinsicsFinderInterface import ExtrinsicFinderInterface
 from core.imageConverter import ImageILDAConverter
 from core.lidaGenerator import LidaFile
 from mainWidget import Ui_MainWindow
+import core.detectUtil as detectUtil
 
 
 class LidaUiManager(QObject):
@@ -36,6 +37,10 @@ class LidaUiManager(QObject):
         self.frame = None
         self.is_camera_opened = False  # 摄像头有没有打开标记
         self.aruco_image_len = 0.08132 * 1000  # 81.32 mm
+        self.camera_mtx = np.array([[1.79697103e+03, 0.00000000e+00, 1.16728650e+03],
+                                    [0.00000000e+00, 1.79632799e+03, 8.53307321e+02],
+                                    [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+        self.camera_distort = np.array([[0.05228516, -0.23618041, 0.00102657, 0.0011332, 0.33239178]])
         self.projector_in_mtx = np.array([[9.60864149e+04, 0.00000000e+00, 4.69182525e+04],
                                           [0.00000000e+00, 1.08873955e+05, 5.81167521e+04],
                                           [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
@@ -79,6 +84,9 @@ class LidaUiManager(QObject):
         self.min_send_interval = 1
         self.last_send_time = 0
         self.save_video = True
+        self.select_file = None
+        self.empty_lida_file = None
+        self.__init_empty_lida()
         self.__init_extrinsic_finder(extrinsic.MARK_POINT_FINDER)
         self._timer = QTimer(self)
         self._cali_timer = QTimer(self)
@@ -101,11 +109,23 @@ class LidaUiManager(QObject):
         self.ui.findTarget.clicked.connect(self.__project_target_image)
         self.ui.projectorCaliBtn.clicked.connect(self.__projector_calibration)
         self.ui.projectorCameraCaliBtn.clicked.connect(self.__projector_camera_calibration)
+        self.ui.contourProjectionBtn.clicked.connect(self.__contour_projection)
+        self.ui.closeProjectorBtn.clicked.connect(self.empty_projection)
+
+    def __init_empty_lida(self):
+        lida_file = LidaFile()
+        lida_file.name = "empty"
+        lida_file.company = "buz141"
+        lida_file.new_frame()
+        lida_file.add_point(0, 0, 0, 0, False)
+        self.empty_lida_file = lida_file.to_bytes()
+        pass
 
     def __init_camera(self):
         self.camera = cv2.VideoCapture(0)
         # self.camera = cv2.VideoCapture("C:\\Users\\Administrator\\Pictures\\WeChat_20230705205725.mp4")
         # 定时器：30ms捕获一帧
+        # self.camera.set(cv2.CAP_PROP_EXPOSURE, -1)
         self._timer.timeout.connect(self.__get_camera_image)
         self._timer.setInterval(30)
         self._timer.start()
@@ -114,6 +134,7 @@ class LidaUiManager(QObject):
         file_name = QFileDialog.getOpenFileNames(self.main_window, '选择图像', os.getcwd(),
                                                  "Image files (*.jpg *.gif *.png *.jpeg)")
         if len(file_name[0]) > 0:
+            self.select_file = file_name[0][0]
             pix_map = QPixmap(file_name[0][0])
             self.ui.imageLabel.setPixmap(pix_map)
             self.ui.imageLabel.setScaledContents(True)
@@ -258,9 +279,9 @@ class LidaUiManager(QObject):
         pass
 
     def __projector_calibration(self):
-        self.calibrator.init(row=7, col=7, offset_y=17000, cali_img_interval=5000, xy_num=3)
+        self.calibrator.init(row=7, col=7, offset_y=15000, cali_img_interval=6000, xy_num=3)
         self._cali_timer.timeout.connect(self.__save_camera_cali_image)
-        self._cali_timer.setInterval(1500)
+        self._cali_timer.setInterval(8000)
         self.__generate_one_cali_image()
         pass
 
@@ -302,3 +323,54 @@ class LidaUiManager(QObject):
         self.image_width = int(self.camera.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.image_height = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
         flag = self.out_video.open('result.mp4', fourcc, fps, (self.image_width, self.image_height))
+
+    def __contour_projection(self):
+        self.empty_projection()
+        time.sleep(1)
+        if self.frame is not None:
+            image = self.frame
+            mask = detectUtil.calculate_gray_primary_area(image, gray_tolerance=35)
+            img1_contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
+            max_contour = detectUtil.find_max_n_contours(img1_contours, 1)[0]
+            image_range = cv2.drawContours(np.zeros((image.shape[0], image.shape[1])), [max_contour], -1,
+                                           (255, 255, 255),
+                                           0)
+            cv2.imwrite("image_range.jpg", image_range)
+            in_mtx_inv = np.linalg.inv(self.camera_mtx)
+            camera_ext = np.array([[9.94094767e-01, 3.40490091e-02, 1.03035236e-01, -4.12571276e+02],
+                                   [-3.54787638e-02, 9.99297477e-01, 1.20751364e-02, -2.26786862e+02],
+                                   [-1.02551705e-01, -1.56593927e-02, 9.94604409e-01, 1.71140716e+03],
+                                   [0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+            projector_inner = np.array([[1.38267219e+05, 0.00000000e+00, 4.03611555e+04],
+                                        [0.00000000e+00, 1.61803734e+05, 2.05332974e+04],
+                                        [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+            camera_projector_trans_mat = np.array([[9.99813559e-01, 9.29488249e-03, -1.69248756e-02, -2.50059599e+02],
+                                                   [-9.43177830e-03, 9.99923304e-01, -8.02666016e-03, 9.55884566e+01],
+                                                   [1.68489707e-02, 8.18479534e-03, 9.99824545e-01, 7.83251266e+02],
+                                                   [0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+            self.projector_in_mtx = projector_inner
+            self.camera_project_trans_mtx = camera_projector_trans_mat
+            r = camera_ext[0:3, 0:3]
+            r_inv = np.linalg.inv(r)
+            tvec = camera_ext[:, 3].reshape(-1)[:3]
+            max_contour.reshape(-1, 2)
+            word_point_list = []
+            for point in max_contour:
+                point = np.append(point, 1)
+                word_point = in_mtx_inv.dot(point)
+                word_point = r_inv.dot(word_point)
+                p = tvec.reshape(-1)
+                d = r_inv.dot(p)
+                s = d[2] / word_point[2]
+                word_point = word_point * s - d
+                word_point = np.append(word_point, 1.0)
+                word_point_list.append(word_point)
+                pass
+            # file_bytes = self.generate_point3d_lida(word_point_list, camera_ext, None)
+            file_bytes = self.generate_point3d_lida(None, camera_ext, word_point_list)
+            file = open("target.ild", 'wb')
+            file.write(file_bytes)
+            self.__send_bytes(file_bytes)
+
+    def empty_projection(self):
+        self.__send_bytes(self.empty_lida_file)
