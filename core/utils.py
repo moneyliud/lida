@@ -28,7 +28,7 @@ def rotationVectorToEulerAngles(rvec):
     cv2.Rodrigues(rvec, R)
     sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
     singular = sy < 1e-6
-    if not singular:  # Æ«º½£¬¸©Ñö£¬¹ö¶¯
+    if not singular:  # Æ«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         x = math.atan2(R[2, 1], R[2, 2])
         y = math.atan2(-R[2, 0], sy)
         z = math.atan2(R[1, 0], R[0, 0])
@@ -36,7 +36,7 @@ def rotationVectorToEulerAngles(rvec):
         x = math.atan2(-R[1, 2], R[1, 1])
         y = math.atan2(-R[2, 0], sy)
         z = 0
-    # Æ«º½£¬¸©Ñö£¬¹ö¶¯»»³É½Ç¶È
+    # Æ«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É½Ç¶ï¿½
     rx = x * 180.0 / 3.141592653589793
     ry = y * 180.0 / 3.141592653589793
     rz = z * 180.0 / 3.141592653589793
@@ -89,3 +89,21 @@ def hex_to_bit_color(color):
     g1 = 1 if g > 128 else 0
     b1 = 1 if b > 128 else 0
     return [r1, g1, b1]
+
+
+def is_contour_circle(contour):
+    center_x, center_y = 0, 0
+    contour = contour.reshape(-1, 2)
+    for point in contour:
+        center_x += point[0]
+        center_y += point[1]
+    center_x = center_x / len(contour)
+    center_y = center_y / len(contour)
+    dis_list = []
+    for point in contour:
+        dis = math.pow((point[0] - center_x) ** 2 + (point[1] - center_y) ** 2, 0.5)
+        dis_list.append(dis)
+    dis_list = np.array(dis_list)
+    std = np.std(dis_list)
+    # print("std=", std)
+    return std < 5

@@ -430,6 +430,32 @@
      <string>外参标定</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="contourProjectionBtn">
+    <property name="geometry">
+     <rect>
+      <x>170</x>
+      <y>540</y>
+      <width>75</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>轮廓投影</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="closeProjectorBtn">
+    <property name="geometry">
+     <rect>
+      <x>260</x>
+      <y>650</y>
+      <width>75</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>关闭投影</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>

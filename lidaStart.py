@@ -9,5 +9,6 @@ if __name__ == '__main__':
     ui = Ui_MainWindow()
     ui.setupUi(MainWindow)
     manager = LidaUiManager(ui, MainWindow)
+    manager.save_video = False
     MainWindow.show()
     sys.exit(app.exec_())

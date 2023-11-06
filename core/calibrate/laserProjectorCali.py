@@ -1,11 +1,10 @@
 import cv2
-import cv2.aruco as aruco
 import numpy
 
 from core.imageConverter import ImageILDAConverter
 from core.lidaGenerator import LidaFile
 from core.PointAddStrategy import CirclePointStrategy
-from core.utils import rotationVectorToEulerAngles
+from core.utils import rotationVectorToEulerAngles, is_contour_circle
 import numpy as np
 
 
@@ -29,7 +28,7 @@ class LaserProjectorCalibration:
         self.camera_dist = None
         self.start_cali = False
         self.cali_count = 0
-        self.max_image_num = 50
+        self.max_image_num = 100
         self.projector_width = 65535
         self.projector_height = 65535
         self.xy_num = 4
@@ -38,6 +37,7 @@ class LaserProjectorCalibration:
         self.image_idx = 0
         self.cali_img_interval = 10000
         self.has_next_image = True
+        self.base_image = None
         pass
 
     def get_one_image(self, row_idx, col_idx):
@@ -98,6 +98,7 @@ class LaserProjectorCalibration:
         return self.start_cali
 
     def add_image(self, image):
+        # self.__output_img("org_img" + str(self.cali_count), image)
         if not self.start_cali:
             return
         if self.cali_count >= self.max_image_num:
@@ -133,19 +134,20 @@ class LaserProjectorCalibration:
     def calibrate(self, images, image_indexes):
         checker_point_list = []
         gray_image_list = []
+        self.base_image = cv2.cvtColor(self.base_image, cv2.COLOR_BGR2GRAY)
         for image in images:
             h, w = image.shape[:2]
             new_camera_mtx, roi = cv2.getOptimalNewCameraMatrix(self.camera_mtx, self.camera_dist, (w, h), 0, (w, h))  #
             # distort_image = cv2.undistort(image, self.camera_mtx, self.camera_dist, None, new_camera_mtx)
             # gray_image = cv2.cvtColor(distort_image, cv2.COLOR_BGR2GRAY)
             gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            checker_points = self.find_circle_center(gray_image)
+            checker_points = self.find_circle_center(gray_image, self.row_num, self.col_num)
             checker_point_list.append(checker_points)
             gray_image_list.append(gray_image)
         self.cali_projector(gray_image_list, checker_point_list, image_indexes)
 
-    def find_circle_center(self, gray_image):
-        ret, white_image = cv2.threshold(gray_image, 240, 255, cv2.THRESH_BINARY)
+    def find_circle_center(self, gray_image, row_num, col_num, threshold=235):
+        ret, white_image = cv2.threshold(gray_image, threshold, 255, cv2.THRESH_BINARY)
         self.__output_img("white_image", white_image)
         contour_list, hierarchy = cv2.findContours(white_image, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         contour_image = np.zeros(white_image.shape)
@@ -154,7 +156,7 @@ class LaserProjectorCalibration:
         checker_points = []
         for i in range(len(contour_list)):
             # 边缘长度>10排除噪声点
-            if hierarchy[0][i][-1] == -1 and len(contour_list[i]) > 10:
+            if hierarchy[0][i][-1] == -1 and len(contour_list[i]) > 20 and is_contour_circle(contour_list[i]):
                 new_contour_list.append(contour_list[i])
                 center, radius = cv2.minEnclosingCircle(contour_list[i])
                 circle_list.append([int(center[0]), int(center[1]), int(radius)])
@@ -174,8 +176,8 @@ class LaserProjectorCalibration:
         # x从小到大，y从小到大，顺序不能错，重要！
         checker_points = np.array(checker_points)
         checker_points = checker_points[checker_points[:, 1].argsort()]
-        for i in range(self.col_num):
-            start, end = i * self.row_num, (i + 1) * self.row_num
+        for i in range(col_num):
+            start, end = i * row_num, (i + 1) * row_num
             sub_list = checker_points[start:end]
             checker_points[start:end] = sub_list[sub_list[:, 0].argsort()]
         return checker_points
@@ -185,11 +187,11 @@ class LaserProjectorCalibration:
         checker_word_points = []
         # 棋盘格模板规格
         w = 11
-        h = 8
+        h = 9
         objp = np.zeros((w * h, 3), np.float32)
         real_pos = np.mgrid[0:w, 0:h].T.reshape(-1, 2)
-        real_pos[:, 0] *= 30
-        real_pos[:, 1] *= 30
+        real_pos[:, 0] *= 95
+        real_pos[:, 1] *= 95
         objp[:, :2] = real_pos
         gray_img_shape = None
         i = 0
@@ -200,8 +202,15 @@ class LaserProjectorCalibration:
             i += 1
             # h, w = gray_image.shape[:2]
             gray_img_shape = gray_image.shape
-            ret, corners = cv2.findChessboardCorners(gray_image, (w, h), flags=cv2.CALIB_CB_ADAPTIVE_THRESH)
-            print(ret, len(corners))
+            base_image = gray_image
+            if self.base_image is not None:
+                base_image = self.base_image
+            ret, corners = cv2.findChessboardCorners(base_image, (w, h), flags=cv2.CALIB_CB_ADAPTIVE_THRESH)
+            if corners is None:
+                corners = self.find_circle_center(base_image, h, w, threshold=70)
+                corners = np.expand_dims(corners, 1).astype(np.float32)
+                if len(corners) > 0:
+                    ret = True
             if ret:
                 checker_word_points.append(objp)
                 corners = corners.reshape(-1, 2)
