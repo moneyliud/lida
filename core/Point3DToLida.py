@@ -91,29 +91,32 @@ class Point3DToLida(ImageILDAConverter):
         return [x, y]
 
     def new_frame(self, duration=0):
-        self.contour_list = np.array(self.contour_list, dtype=object)
-        points = self.convert_contour_to_projection()
         self.lida_file.name = "actual"
         self.lida_file.company = "buz141"
         self.lida_file.new_frame()
         self.lida_file.frames[self.lida_file.cur_frame_index].header.duration = duration
-        print("frame point length= ", len(points))
+
+    def end_frame(self):
+        self.contour_list = np.array(self.contour_list, dtype=object)
+        points = self.convert_contour_to_projection()
         for i in range(len(points)):
             point = points[i]
             self.lida_file.add_point(point[0], point[1], point[2], point[3], point[4])
+        print("frame point length= ", len(self.lida_file.frames[self.lida_file.cur_frame_index].points))
         self.contour_list = []
         self.points = []
         self.org_points = []
+        self.image = None
+        self.scales = 1.0
 
     def add_image(self, image):
         points = self.convert(image)
         for i in range(len(points)):
             point = points[i]
             self.lida_file.add_point(point[0], point[1], point[2], point[3], point[4])
-        self.image = None
-        self.contour_list = []
-        self.points = []
-        self.scales = 1.0
+        #
+        # self.contour_list = []
+        # self.points = []
 
     def to_bytes(self):
         return self.lida_file.to_bytes()
